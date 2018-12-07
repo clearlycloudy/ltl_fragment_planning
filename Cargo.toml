@@ -1,0 +1,15 @@
+[package]
+name = "ltl_fragment_planning"
+version = "0.1.0"
+authors = ["Bill Liu <yuan6liu@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+
+[lib]
+name="ltl_fragment_planning"
+path="src/mod.rs"
+
+[[bin]]
+name="sample_obstacle"
+path="test/sample_obstacle/main.rs"
