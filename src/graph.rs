@@ -19,7 +19,7 @@ pub enum Action {
 
 impl Graph {
     
-    pub fn build_2d_map( d: i32, hs: &HashSet<Vec<i32>>, range_allowed: ((i32,i32),(i32,i32)), delete_self_transition: bool ) -> ( States, Graph ) {
+    pub fn build_2d_map( d: i32, hs: &HashSet<Vec<i32>>, ranges_allowed: Vec<((i32,i32),(i32,i32))>, delete_self_transition: bool ) -> ( States, Graph ) {
         
         let mut g = Graph::default();
 
@@ -52,7 +52,9 @@ impl Graph {
 
         g.prune_destination_transition( hs );
 
-        g.prune_restricted_range( range_allowed );
+        for i in ranges_allowed.iter() {
+            g.retain_intersection_range( *i );
+        }
         
         ( states, g )
     }
@@ -93,13 +95,29 @@ impl Graph {
             _ => {},
         }
     }
-    
-    fn prune_restricted_range( & mut self, range: ((i32,i32),(i32,i32)) ){
+
+    fn retain_intersection_range( & mut self, range: ((i32,i32),(i32,i32)) ){ //retain region that intersects inclusively
         for (k,v) in self.e.iter_mut() {
             let mut delete_list = vec![];
             for i in v.iter() {
                 if i[0] < (range.0).0 || i[0] > (range.1).0 ||
-                   i[1] < (range.0).1 || i[0] > (range.1).1 {
+                   i[1] < (range.0).1 || i[1] > (range.1).1 {
+                        
+                        delete_list.push( i.clone() );
+                    }
+            }
+            for i in delete_list {
+                v.remove( &i );
+            }
+        }
+    }
+    
+    fn prune_intersection_range( & mut self, range: ((i32,i32),(i32,i32)) ){ //retain range that does not intersect
+        for (k,v) in self.e.iter_mut() {
+            let mut delete_list = vec![];
+            for i in v.iter() {
+                if i[0] >= (range.0).0 || i[0] <= (range.1).0 ||
+                   i[1] >= (range.0).1 || i[1] <= (range.1).1 {
                     delete_list.push( i.clone() );
                 }
             }
