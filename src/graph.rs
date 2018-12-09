@@ -9,7 +9,7 @@ pub struct Graph {
     pub e_reverse: HashMap<Vec<i32>, HashSet<Vec<i32>> >,
 }
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Debug,Eq,PartialEq,Hash)]
 pub enum Action {
     N,
     S,
@@ -77,6 +77,23 @@ impl Graph {
         }
     }
 
+    pub fn prune_destination_transition_for_one( & mut self, s: &Vec<i32>, hs: &HashSet<Vec<i32>> ){
+        match self.e.get_mut( s ) {
+            Some( x ) => {
+                let mut delete_list = vec![];
+                for i in x.iter() {
+                    if hs.contains( i ) {
+                        delete_list.push( i.clone() );
+                    }
+                }
+                for i in delete_list {
+                    x.remove( &i );
+                }
+            },
+            _ => {},
+        }
+    }
+    
     fn prune_restricted_range( & mut self, range: ((i32,i32),(i32,i32)) ){
         for (k,v) in self.e.iter_mut() {
             let mut delete_list = vec![];

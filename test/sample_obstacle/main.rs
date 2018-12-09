@@ -59,24 +59,24 @@ pub fn generate_safety_constraints( tsys: &ts::TransitionSys, obstacles_stationa
     proposition
 }
 
-// pub fn generate_persistence_constraints( s: &States, persistence_range: ((i32,i32), (i32,i32)) ) -> HashSet<Vec<i32>> {
+pub fn generate_persistence_constraints( tsys: &ts::TransitionSys, persistence_range: ((i32,i32), (i32,i32)) ) -> HashSet<Vec<i32>> {
 
-//     let states = generate_permutation( &s, 0, 4 );
+    let states = generate_permutation( &tsys.s, 0, 4 );
     
-//     let mut proposition = HashSet::new();
-//     for i in states.iter() {
-//         let a : Vec<_> = i.iter().cloned().collect();
-//         let mut agent_pos = vec![];
-//         agent_pos.extend_from_slice( &a[0..2] );
+    let mut proposition = HashSet::new();
+    for i in states.iter() {
+        let a : Vec<_> = i.iter().cloned().collect();
+        let mut agent_pos = vec![];
+        agent_pos.extend_from_slice( &a[0..2] );
 
-//         if agent_pos[0] >= (persistence_range.0).0 && agent_pos[0] <= (persistence_range.1).0 &&
-//            agent_pos[1] >= (persistence_range.0).1 && agent_pos[1] <= (persistence_range.1).1 {
-//                proposition.insert(i.clone());
-//            }
-//     }
+        if agent_pos[0] >= (persistence_range.0).0 && agent_pos[0] <= (persistence_range.1).0 &&
+           agent_pos[1] >= (persistence_range.0).1 && agent_pos[1] <= (persistence_range.1).1 {
+               proposition.insert(i.clone());
+           }
+    }
     
-//     proposition
-// }
+    proposition
+}
 
 pub fn generate_next_step_response_constraints( tsys: &ts::TransitionSys, next_step_response: &HashMap<(i32,i32),HashSet<(i32,i32)>> ) -> HashMap<Vec<i32>, HashSet< Vec<i32> > > {
     
@@ -154,24 +154,73 @@ pub fn generate_next_step_response_constraints( tsys: &ts::TransitionSys, next_s
 //     proposition
 // }
 
-fn filter_transition_destination( t: &ts::TransitionSys, states_allowed: &HashSet<Vec<i32>> ) -> ts::TransitionSys {
+// fn filter_transition_destination( t: &ts::TransitionSys, states_allowed: &HashSet<Vec<i32>> ) -> ts::TransitionSys {
 
-    let mut tsys_filtered = ts::TransitionSys::default();
+//     let mut tsys_filtered = ts::TransitionSys::default();
     
-    for (k,v) in t.g.e.iter() {
-        if !tsys_filtered.g.e.contains_key( k ) {
-            tsys_filtered.g.e.insert( k.clone(), HashSet::new() );
-        }
+//     for (k,v) in t.g.e.iter() {
+//         if !tsys_filtered.g.e.contains_key( k ) {
+//             tsys_filtered.g.e.insert( k.clone(), HashSet::new() );
+//         }
 
-        for j in v.iter() {
-            if states_allowed.contains(j) {
-                tsys_filtered.g.e.get_mut( k ).unwrap().insert( j.clone() );
-            }
+//         for j in v.iter() {
+//             if states_allowed.contains(j) {
+//                 tsys_filtered.g.e.get_mut( k ).unwrap().insert( j.clone() );
+//             }
+//         }
+//     }
+
+//     tsys_filtered.g.update_reverse_edge();
+//     tsys_filtered.s = t.s.clone();
+
+//     tsys_filtered
+// }
+
+fn determine_transition_action( from: &Vec<i32>, to: &Vec<i32> ) -> graph::Action {
+    assert!(from.len() == to.len());
+    let dy = to[0] - from[0];
+    let dx = to[1] - from[1];
+    assert!( dx.abs() + dy.abs() == 1 );
+    if dy == 1 {
+        graph::Action::S
+    } else if dy == -1 {
+        graph::Action::N
+    } else if dx == 1 {
+        graph::Action::E
+    } else if dx == -1 {
+        graph::Action::W
+    } else {
+        panic!("unexpected delta");
+    }
+}
+
+fn prune_transition_actions( t: &ts::TransitionSys, dest_states_not_allowed: &HashSet<Vec<i32>> ) -> ts::TransitionSys {
+
+    let mut tsys_filtered : ts::TransitionSys = t.clone();
+    
+    let mut parent_action_to_prune = HashSet::new();
+
+    for i in dest_states_not_allowed.iter() {
+        match tsys_filtered.g.e_reverse.get_mut( i ) { //get parents of state i
+            Some( x ) => {
+                for j in x.iter() {
+                    let a = determine_transition_action( j, i ); //determine what action is taken in parent state
+                    parent_action_to_prune.insert( (j.clone(),a) ); //mark (parent state, action) pair to be removed
+                }
+            },
+            _ => {},
         }
     }
 
+    //println!("prunelist: {:?}", parent_action_to_prune );
+    
+    //prune marked transitions
+    for (prune_state, action) in parent_action_to_prune.iter() {
+        let states_transition = t.g.get_state_children_from_action( prune_state, *action );
+        tsys_filtered.g.prune_destination_transition_for_one( prune_state, &states_transition );
+    }
+
     tsys_filtered.g.update_reverse_edge();
-    tsys_filtered.s = t.s.clone();
 
     tsys_filtered
 }
@@ -335,9 +384,9 @@ fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<
                         }
                     }
 
-                    //take the min of the values corresponding to different actions
                     let m = match predcessor_type {
                         PredecessorType::Controllable => {
+                            //take the min of the values corresponding to different actions
                             actions_val.iter().min()
                         },
                         _ => {
@@ -434,7 +483,7 @@ fn main() {
     //------------------------------------------
         
     //create initial transition system
-    let d = 8i32;
+    let d = 3i32;
 
     let delete_self_transition_1 = true;
     let (s_map_1, g_map_1) = graph::Graph::build_2d_map( d, &HashSet::new(), ((0,0),(d,d)), delete_self_transition_1 );
@@ -455,16 +504,20 @@ fn main() {
 
     let tsys_orig = ts::TransitionSys { s: s, g: g };
 
+    println!("resp---------------------------");
+    
     //add propositions for next step response-----
     let mut next_step_response : HashMap<(i32,i32), HashSet<(i32,i32)> > = HashMap::new();
     next_step_response.insert( (1,0), [(1,1)].iter().cloned().collect() );
     
     let next_step_response_allowed = generate_next_step_response_constraints( &tsys_orig, &next_step_response );
 
+    // println!("next step response allowed: {:?}", next_step_response_allowed );
+
     //augment trasition system with next step response constraint----
     let tsys_resp = filter_transition_response( &tsys_orig, &next_step_response_allowed );
     // tsys_resp.query_transitions_possible( &vec![ 0, 0, 6, 6] );
-    // tsys_resp.query_transitions_possible_partial( &vec![ 0, 0 ] );
+    // tsys_resp.query_transitions_possible_partial( &vec![ 1, 0 ] );
     // let dest = tsys_resp.query_states_partial_nonempty( &vec![0,0] );
 
     //add propositions for safety------
@@ -472,6 +525,10 @@ fn main() {
     let states_satisfy_safety = generate_safety_constraints(&tsys_resp, &stationary_obstacles );
     // println!("{:?}",states_satisfy_safety.len());
 
+    //tsys_resp.query_transitions_possible_partial( &vec![ 0, 0 ] );
+
+    println!("safe---------------------------");
+    
     let tsys_safe = {
         let states : HashSet<Vec<i32>> = generate_permutation( &tsys_resp.s, 0, 4 ).iter().cloned().collect();
         let states_unsafe = set_subtract( &states, &states_satisfy_safety );
@@ -482,45 +539,75 @@ fn main() {
         // println!("states guaranteed to lead to unsafety: {:?}", states_unsafe_predecessor);
 
         let keys = states_unsafe_predecessor.keys().cloned().collect::<HashSet<_>>();
-        let states_remain = set_subtract( &states, &keys );
+        assert!( keys.contains( &vec![0,0,0,1] ) );
+        assert!( keys.contains( &vec![0,0,1,0] ) );
+        assert!( keys.contains( &vec![0,0,0,0] ) );
+        assert!( keys.contains( &vec![0,0,1,1] ) );
+        assert!( keys.contains( &vec![0,0,0,2] ) );
+        // println!("states to exclude from transition system: {:?}", keys );
+        // let states_remain = set_subtract( &states, &keys );
         // println!("states remain: {:?}", states_remain );
 
-        filter_transition_destination( &tsys_resp, &states_remain )
+        prune_transition_actions( &tsys_resp, &keys )
     };
+    // tsys_safe.query_transitions_possible_partial( &vec![ 0, 0 ] );
+    
 
+    println!("persistence---------------------------");
+    
     //add propositions for persistence----------------
-    let agent_working_area = ((d/2,d/2),(d,d));
-    // // let states_satisfy_persistence = generate_persistence_constraints(&tsys_orig.s, persistence_range);
+    let tsys_per = {
+        let agent_working_area = ((d/2,d/2),(d,d));
+        let states_satisfy_persistence = generate_persistence_constraints(&tsys_safe, agent_working_area);
+        // println!("persistence states: {:?}", states_satisfy_persistence );
+
+        let states : HashSet<Vec<i32>> = generate_permutation( &tsys_safe.s, 0, 4 ).iter().cloned().collect();
+        let states_persistence_negation = set_subtract( &states, &states_satisfy_persistence );
+        // println!("states_persistence_negation: {:?}", states_persistence_negation);
+
+        //generate predecessor states that leads to non persistent satisfying states
+        let states_unpersistence_predecessor = ForcedPredecessor( &tsys_safe, &states_persistence_negation );
+        // println!("states guaranteed to lead to unpersistence: {:?}", states_unpersistence_predecessor);
+
+        let keys = states_unpersistence_predecessor.keys().cloned().collect::<HashSet<_>>(); 
+        // println!("states to exclude from transition system: {:?}", keys );
+        
+        // let states_remain = set_subtract( &states, &keys );
+        // println!("states remain: {:?}", states_remain );
+
+        prune_transition_actions( &tsys_safe, &keys )
+    };
+    tsys_per.query_transitions_possible_partial( &vec![ 1, 2 ] );
+    // tsys_per.query_transitions_possible( &vec![ 1, 2, 2, 1 ] );
+    // tsys_per.query_transitions_possible( &vec![ 1, 2, 2, 0 ] ); 
+
+
+    //add propositions for steady state response------
+
+    println!("ss_resp---------------------------");
+
+    let mut ss_next_step_response : HashMap<(i32,i32), HashSet<(i32,i32)> > = HashMap::new();
+    ss_next_step_response.insert( (1,2), [(1,1)].iter().cloned().collect() );
+
+    let ss_next_step_response_allowed = generate_next_step_response_constraints( &tsys_per, &ss_next_step_response );
+
+    let tsys_ss_resp = filter_transition_response( &tsys_per, &ss_next_step_response_allowed );
+    tsys_ss_resp.query_transitions_possible_partial( &vec![ 1, 2 ] );
     
-    // // let tsys_pers = filter_transition_destination( &tsys_safety, &states_satisfy_persistence );
-    // // tsys_pers.query_transitions_possible( &vec![ 3, 3, 6, 6] );
+    return;
+
+    println!("task---------------------------");
     
-    return
+    //todo: collect states for each task group and compute winning set
+        
+    // let mut task_pos = HashSet::new();
+    // task_pos.insert( vec![3,6] );
+    // task_pos.insert( vec![8,0] );
+    // task_pos.insert( vec![9,9] );
+    // let task_states = generate_task_states(&tsys_orig.s, &task_pos );
+    // println!("task_groups len: {}", task_states.len());
+    // //------------------------------------------------
 
-
-    // // //------------------------------------------------
-    
-    // // //add propositions for steady state response------
-    // // let mut ss_next_step_response : HashMap<(i32,i32), HashSet<(i32,i32)> > = HashMap::new();
-    // // ss_next_step_response.insert( (9,8), [(8,8)].iter().cloned().collect() );
-    // // ss_next_step_response.insert( (8,8), [(8,9)].iter().cloned().collect() );
-
-    // // let ss_next_step_response_allowed = generate_next_step_response_constraints( &tsys_orig.s, &ss_next_step_response );
-
-    // // let tsys_ss_resp = filter_transition_response( &tsys_pers, &ss_next_step_response_allowed );
-    // // tsys_ss_resp.query_transitions_possible( &vec![ 9, 8, 6, 6] );
-    // // tsys_ss_resp.query_transitions_possible( &vec![ 8, 8, 6, 6] );
-    // // //------------------------------------------------
-
-    // // //collect all states for task---------------------
-    // // let mut task_pos = HashSet::new();
-    // // task_pos.insert( vec![3,6] );
-    // // task_pos.insert( vec![8,0] );
-    // // task_pos.insert( vec![9,9] );
-    // // let task_states = generate_task_states(&tsys_orig.s, &task_pos );
-    // // println!("task_groups len: {}", task_states.len());
-    // // //------------------------------------------------
-
-    // // let (w, task_groups) = compute_winning_set( &tsys_ss_resp, &task_states );
+    // let (w, task_groups) = compute_winning_set( &tsys_ss_resp, &task_states );
     
 }

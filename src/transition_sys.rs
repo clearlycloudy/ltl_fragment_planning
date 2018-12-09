@@ -7,7 +7,7 @@ pub fn version()-> & 'static str {
     "0.0.0"
 }
 
-#[derive(Debug,Default)]
+#[derive(Debug,Default,Clone)]
 pub struct TransitionSys {
     pub s: States,
     pub g: Graph,
