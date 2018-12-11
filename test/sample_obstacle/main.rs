@@ -520,7 +520,11 @@ fn main() {
     //create initial transition system
     let d = 10i32;
 
-    let mv_obs_range = ((d/2,d/2-2),(d/2+2,d/2+2));
+    //scenario 1
+    // let mv_obs_range = ((d/2,d/2-2),(d/2+2,d/2+2));
+
+    //scenario 2
+    let mv_obs_range = ((7,2),(7,9));
     
     let delete_self_transition_1 = true;
     let (s_map_1, g_map_1) = graph::Graph::build_2d_map( d, &HashSet::new(), vec![((0,0),(d-1,d-1))], delete_self_transition_1 );
@@ -682,7 +686,7 @@ fn main() {
     
     // println!("{:?}", tsys_resp.query_transitions_possible_partial( &vec![0,0] ) );
     
-    let initial_state = vec![0,0,d/2,d/2];
+    let initial_state = vec![0,0,(mv_obs_range.1).0, (mv_obs_range.1).1];
     if !predecessor_to_winning_set.contains(&initial_state) {
         println!("infeasible");
     } else {
@@ -826,7 +830,7 @@ fn main() {
         use std::io::prelude::*;
         use std::io::Write;
         let mut buf = String::new();
-        let mut file = File::create("sample_task_set_1.txt").expect("lof file creation");
+        let mut file = File::create("sample_task_set_2.txt").expect("log file creation");
         for (idx,(i,j,k,l)) in run_state.iter().enumerate() {
             fmt::write(& mut buf,format_args!("{}, {}, {}, {}, {}, {:?}, {:?}, {}\n", idx, i[0], i[1], i[2], i[3], j, k, l )).expect("log string write");
         }
