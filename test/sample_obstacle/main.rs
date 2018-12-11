@@ -8,6 +8,8 @@ use std::collections::{HashMap,HashSet,BinaryHeap};
 use std::cmp::{Ordering,Reverse};
 
 
+static mut VERBOSE : bool = false;
+
 pub fn generate_permutation( s:&states::States, index_start: usize, count: usize ) -> Vec< Vec< i32 > > {
     let mut a :Vec<Vec<i32>> = vec![vec![]];
     for i in s.s_dim.iter().skip(index_start).take(count) {
@@ -147,7 +149,7 @@ pub fn generate_next_step_response_constraints( tsys: &ts::TransitionSys, next_s
     proposition
 }
 
-pub fn generate_task_states( tsys: &ts::TransitionSys, task_pos: &HashSet<Vec<i32>> ) -> Vec<HashSet<Vec<i32>>> {
+pub fn generate_task_states( tsys: &ts::TransitionSys, task_pos: &Vec<Vec<i32>> ) -> Vec<HashSet<Vec<i32>>> {
     let states = generate_permutation( &tsys.s, 0, 4 );
 
     let mut map_task_id = HashMap::new();
@@ -155,13 +157,15 @@ pub fn generate_task_states( tsys: &ts::TransitionSys, task_pos: &HashSet<Vec<i3
         map_task_id.insert(v.clone(),k);
     }
 
+    let mut task_pos_hs : HashSet<_> = task_pos.iter().cloned().collect();
+        
     let mut proposition = HashMap::new();
     
     for i in states.iter() {
         let a : Vec<_> = i.iter().cloned().collect();
         let mut agent_pos = vec![];
         agent_pos.extend_from_slice( &a[0..2] );
-        if task_pos.contains( &agent_pos ) {
+        if task_pos_hs.contains( &agent_pos ) {
             let id = map_task_id.get( &agent_pos ).unwrap();
             if !proposition.contains_key( id ) {
                 proposition.insert( *id, HashSet::new() );
@@ -308,9 +312,10 @@ pub enum PredecessorType {
     Forced,
 }
 
-fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<Vec<i32>>, predcessor_type: PredecessorType ) -> HashMap<Vec<i32>,i32> {
+fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<Vec<i32>>, predcessor_type: PredecessorType ) -> ( HashMap<Vec<i32>,i32>, HashMap<Vec<i32>,graph::Action> ) {
 
-    let mut v = HashMap::new();
+    let mut v = HashMap::new(); //storage for computed cost
+    let mut policy = HashMap::new(); //storage for policy
     
     for i in states.iter() {
         v.insert( i.clone(), std::i32::MAX );
@@ -359,7 +364,7 @@ fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<
                     
                     for a in actions.iter() {
 
-                        let (mut t, mut value_update) = (None,None);
+                        let ( mut t, mut value_action_update) = ( None, None );
 
                         //get max for all children corresponding to each action
                         for reachable in tsys.g.get_state_children_from_action( p, *a ).iter() {
@@ -376,17 +381,18 @@ fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<
                             } else {
                                 std::i32::MAX
                             };
+                            //println!("temp cost: {}", temp );
                             if t == None {
                                 t = Some(reachable);
-                                value_update = Some(temp);
+                                value_action_update = Some((temp,a.clone()));
                                 // if p[0]==1 && p[1]==1 && p[2] == 2 && p[3] == 2 {
                                 //     println!("here: top: {:?}, p: {:?}, action: {:?}, reachable: {:?}", top.s, p, a, tsys.g.get_state_children_from_action( p, *a ) );
                                 //     println!("reach: {:?}, value_update: {:?}", reachable, value_update);
                                 // }
                             } else {
-                                if value_update.unwrap() < temp {
+                                if (value_action_update.unwrap()).0 < temp {
                                     t = Some(reachable);
-                                    value_update = Some(temp);
+                                    value_action_update = Some((temp,a.clone()));
                                     // if p[0]==1 && p[1]==1 && p[2] == 2 && p[3] == 2 {
                                         // println!("top: {:?}, p: {:?}, action: {:?}, reachable: {:?}", top.s, p, a, tsys.g.get_state_children_from_action( p, *a ) );
                                         // println!("{:?}, reach: {:?}, value_update: {:?}", p, reachable, value_update);
@@ -395,7 +401,7 @@ fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<
                             }
                         }
 
-                        match value_update {
+                        match value_action_update {
                             Some(x) => {
                                 actions_val.push( x );
                             },
@@ -403,13 +409,13 @@ fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<
                         }
                     }
 
-                    let m = match predcessor_type {
+                    let best_val_action = match predcessor_type {
                         PredecessorType::Controllable => {
                             //take the min of the values corresponding to different actions
-                            actions_val.iter().min()
+                            actions_val.iter().min_by_key( |x| x.0 )
                         },
                         _ => {
-                            actions_val.iter().max()
+                            actions_val.iter().max_by_key( |x| x.0 )
                         },
                     };
 
@@ -423,15 +429,19 @@ fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<
                     // }
 
                     let v_mut = v.get_mut(p).unwrap();
-                    if let Some(val) = m {
+                    if let Some((val,act)) = best_val_action {
                         if *val < *v_mut {
                             *v_mut = *val;
+                            policy.insert( p.clone(), *act );
                             //update the key value of the associated item in heap
                             //by inserting a new copy, ignore old copy in heap if it doesn't match
                             //value in v map
-                            // if p[0]==1 && p[1]==1 && p[2] == 2 && p[3] == 2 {
-                                // println!("::::::::::::: updated key value for {:?}->{:?} to {}",p, top.s, *val);
-                            // }
+                            //if p[0]==1 && p[1]==1 && p[2] == 2 && p[3] == 2 {
+                            unsafe {
+                            if VERBOSE {
+                                println!("::::::::::::: updated key value for {:?}->{:?} to {}, action:{:?}",p, top.s, *val, act);
+                            }
+                            }
                             let item = HeapItem { cost: *val, s: p.clone() };
                             q.push( item );
                         }
@@ -442,31 +452,37 @@ fn value_func( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>>, states: &Vec<
         }
     }
     
-    v
+    (v,policy)
 }
     
-pub fn ControllablePredecessor( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>> ) -> HashMap<Vec<i32>,i32> {
+pub fn ControllablePredecessor( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>> ) -> (HashMap<Vec<i32>,i32>, HashMap<Vec<i32>,graph::Action>) {
     
     let states = generate_permutation( &tsys.s, 0, 4 );
-    let mut ret = HashMap::new();
-    for (k,v) in value_func( tsys, dest, &states, PredecessorType::Controllable ).iter() {
-        if *v != std::i32::MAX {
-            ret.insert(k.clone(),v.clone());
-        }
-    }
-    ret
+    // let mut ret = HashMap::new();
+    let (costs, policies) = value_func( tsys, dest, &states, PredecessorType::Controllable );
+    ( costs.into_iter().filter(|x| x.1 != std::i32::MAX ).collect(), policies )
 }
 
-pub fn ForcedPredecessor( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>> ) -> HashMap<Vec<i32>,i32> {
+pub fn ForcedPredecessor( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>> ) -> (HashMap<Vec<i32>,i32>, HashMap<Vec<i32>,graph::Action>) {
     
     let states = generate_permutation( &tsys.s, 0, 4 );
-    let mut ret = HashMap::new();
-    for (k,v) in value_func( tsys, dest, &states, PredecessorType::Forced ).iter() {
-        if *v != std::i32::MAX {
-            ret.insert(k.clone(),v.clone());
-        }
-    }
-    ret
+    // let mut ret = HashMap::new();
+    // for (k,v) in value_func( tsys, dest, &states, PredecessorType::Forced ).iter() {
+    //     if *v != std::i32::MAX {
+    //         ret.insert(k.clone(),v.clone());
+    //     }
+    // }
+    let (costs, policies) = value_func( tsys, dest, &states, PredecessorType::Forced );
+    ( costs.into_iter().filter(|x| x.1 != std::i32::MAX ).collect(), policies )
+}
+
+pub fn OptimalPolicy( tsys: &ts::TransitionSys, dest: &HashSet<Vec<i32>> ) -> HashMap<Vec<i32>,graph::Action> {
+    let (costs,policies) = ControllablePredecessor( tsys, dest );
+    println!("len costs: {}, len policies: {}",costs.len(), policies.len());
+    // for i in policies.iter() {
+    //     println!("{:?}",i);
+    // }
+    policies
 }
 
 fn main() {
@@ -520,8 +536,8 @@ fn main() {
     s.s[0] = 0;
     s.s[1] = 0;
 
-    s.s[2] = 0;
-    s.s[3] = d-1;
+    s.s[2] = (mv_obs_range.1).0;
+    s.s[3] = (mv_obs_range.1).1;
 
     let tsys_orig = ts::TransitionSys { s: s, g: g };
     // tsys_orig.query_transitions_possible_partial( &vec![ 0, 0 ] );
@@ -560,7 +576,7 @@ fn main() {
         // println!("unsafe states: {:?}",states_unsafe);
         
         //generate predecessor states that leads to unsafe states
-        let states_unsafe_predecessor = ForcedPredecessor( &tsys_resp, &states_unsafe );
+        let states_unsafe_predecessor = ForcedPredecessor( &tsys_resp, &states_unsafe ).0;
         // println!("states guaranteed to lead to unsafety: {:?}", states_unsafe_predecessor);
 
         let keys = states_unsafe_predecessor.keys().cloned().collect::<HashSet<_>>();
@@ -576,7 +592,7 @@ fn main() {
         prune_transition_actions( &tsys_resp, &keys )
     };
     // tsys_safe.query_transitions_possible_partial( &vec![ 0, 0 ] );
-    tsys_safe.query_transitions_possible( &vec![ 0, 0, 5, 5 ] );
+    // tsys_safe.query_transitions_possible( &vec![ 0, 0, 5, 5 ] );
 
     println!("persistence---------------------------");
     
@@ -594,7 +610,7 @@ fn main() {
         // println!("states_persistence_negation: {:?}", states_persistence_negation);
 
         //generate predecessor states that leads to non persistent satisfying states
-        let states_unpersistence_predecessor = ForcedPredecessor( &tsys_safe, &states_persistence_negation );
+        let states_unpersistence_predecessor = ForcedPredecessor( &tsys_safe, &states_persistence_negation ).0;
         // println!("states guaranteed to lead to unpersistence: {:?}", states_unpersistence_predecessor);
 
         let keys = states_unpersistence_predecessor.keys().cloned().collect::<HashSet<_>>(); 
@@ -626,10 +642,11 @@ fn main() {
     
     //todo: collect states for each task group and compute winning set
         
-    let mut task_pos = HashSet::new();
-    task_pos.insert( vec![d-1,0] );
-    task_pos.insert( vec![d-1,d-1] );
-    task_pos.insert( vec![d/2,d-1] );
+    // let mut task_pos = HashSet::new();
+    let mut task_pos = vec![];
+    task_pos.push( vec![d-1,0] );
+    task_pos.push( vec![d-1,d-1] );
+    task_pos.push( vec![d/2,d-1] );
     let mut task_sets = generate_task_states(&tsys_ss_resp, &task_pos );
 
     for i in task_sets.iter_mut() {
@@ -644,6 +661,8 @@ fn main() {
 
     let (w, task_groups) = compute_winning_set( &tsys_ss_resp, &task_sets );
 
+    let predecessor_to_winning_set : HashSet<_>= ControllablePredecessor( &tsys_safe, &w ).0.keys().cloned().collect();
+    
     // {
     //     let states : HashSet<Vec<i32>> = generate_permutation( &tsys_resp.s, 0, 4 ).iter().cloned().collect();
 
@@ -653,17 +672,169 @@ fn main() {
     //     // println!("losing_set: {:?}", losing_set );
     // }
     
-    println!("winning set: {:?}", w.len() );
+    println!("winning set length: {:?}", w.len() );
+    println!("predecessor_to_winning_set length: {:?}", predecessor_to_winning_set.len() );
     println!("task sets size:");
-    task_groups.iter().for_each( |x| { println!("{:?}",x.len());} );
 
+    // println!("winning set: {:?}", w );
+
+    task_groups.iter().for_each( |x| { println!("{:?}",x.len());} );
+    
+    // println!("{:?}", tsys_resp.query_transitions_possible_partial( &vec![0,0] ) );
+    
     let initial_state = vec![0,0,d/2,d/2];
-    if !w.contains(&initial_state) {
+    if !predecessor_to_winning_set.contains(&initial_state) {
         println!("infeasible");
-        return
+    } else {
+        println!("feasible");
+        //generate feasible policy from s0 to winning set
+        unsafe{ VERBOSE = true; }
+        let policy_to_w = OptimalPolicy( &tsys_safe, &w );
+        println!("policy_to_w: {:?}", policy_to_w);
+
+        unsafe{ VERBOSE = false; }
+        //generate feasible policy for each task set
+        let policy_to_tasks : Vec<_>= task_groups.iter().map(|x| OptimalPolicy( &tsys_safe, x ) ).collect();
+        // for i in policy_to_tasks.iter() {
+        //     println!("policy_to_tasks: {:?}", i.len());
+        // }
+
+        //`println!("policy_to_tasks[1]: {:?}", policy_to_tasks[1]);
+
+        //run simulation
+        let mut sim_state = vec![ 0, 0, (mv_obs_range.1).0, (mv_obs_range.1).1 ];
+
+        let mut task_visit_count = HashMap::new();
+        let mut task_pos_order = vec![];
+        for i in task_pos.iter() {
+            task_visit_count.insert(i.clone(),0);
+            task_pos_order.push( i.clone() );
+        }
+        let mut visit_count = 0;
+        let visit_count_lim = policy_to_tasks.len() * 3;
+        let mut task_cur = 0;
+
+        let mut run_state = vec![ (sim_state.clone(), None, None, false) ];
+
+
+        //run policy from s0 to winning set
+        //run policy from present state to current task set
+
+        let mut reached_winning_set = false;
+
+        println!("using policy to reach winning set");
+        
+        'next_step: loop {
+
+            let mut reached_task_set = false;
+            
+            if visit_count >= visit_count_lim {
+                break;
+            }
+
+            println!("sim_state: {:?}", sim_state );
+            let mut pos_agent : Vec<_> = sim_state.iter().take(2).cloned().collect();
+
+            let next_action = if !reached_winning_set {
+                match policy_to_w.get(&sim_state) {
+                    Some(x) => { x },
+                    None => {
+                        if w.contains(&sim_state) {
+                            reached_winning_set = true;
+                            println!("reached winning set, switching policy to reach tasks");
+                            continue 'next_step;
+                        } else {
+                            panic!("unexpected state in policy query to reach winning set");
+                        }
+                    }
+                }
+            } else {
+                match policy_to_tasks[task_cur].get(&sim_state) {
+                    Some(x) => { x },
+                    None => {
+                        if task_pos.contains(&pos_agent) {
+                            reached_task_set = true;
+                            println!("reached task destination: {:?}", pos_agent );
+                            task_cur = (task_cur + 1) % policy_to_tasks.len();
+                            visit_count += 1;
+                            policy_to_tasks[task_cur].get(&sim_state).expect("unexpected state in policy query")
+                        } else {
+                            panic!("unexpected state in policy query");
+                        }
+                    }
+                }
+            };
+
+            match next_action {
+                graph::Action::N => { pos_agent[0] -= 1; },
+                graph::Action::S => { pos_agent[0] += 1; },
+                graph::Action::W => { pos_agent[1] -= 1; },
+                graph::Action::E => { pos_agent[1] += 1; },
+            }
+
+            // println!("agent pos new: {:?}", pos_agent );
+            let mut pos_mov_obs : Vec<_> = sim_state.iter().skip(2).cloned().collect();
+            use rand::distributions::{Distribution,Uniform};
+            let mut rng = rand::thread_rng();
+            let btw = Uniform::from(0..4);
+            let moving_obs_action = loop {
+                let choice = btw.sample(&mut rng);
+                let choices = [ graph::Action::N, graph::Action::S, graph::Action::W, graph::Action::E ];
+                let chosen = match choices[choice] {
+                    graph::Action::N if pos_mov_obs[0] - 1 >= (mv_obs_range.0).0 && pos_mov_obs[0] - 1 <= (mv_obs_range.1).0 => {
+                        Some(graph::Action::N)
+                    },
+                    graph::Action::S if pos_mov_obs[0] + 1 >= (mv_obs_range.0).0 && pos_mov_obs[0] + 1 <= (mv_obs_range.1).0 => {
+                        Some(graph::Action::S)
+                    },
+                    graph::Action::W if pos_mov_obs[1] - 1 >= (mv_obs_range.0).1 && pos_mov_obs[1] - 1 <= (mv_obs_range.1).1 => {
+                        Some(graph::Action::W)
+                    },
+                    graph::Action::E if pos_mov_obs[1] + 1 >= (mv_obs_range.0).1 && pos_mov_obs[1] + 1 <= (mv_obs_range.1).1 => {
+                        Some(graph::Action::E)
+                    },
+                    _ => None
+                };
+                match chosen {
+                    Some(x) => {
+                        break x
+                    },
+                    _ => {continue;},
+                }
+            };
+            
+            match moving_obs_action {
+                graph::Action::N => { pos_mov_obs[0] -= 1; },
+                graph::Action::S => { pos_mov_obs[0] += 1; },
+                graph::Action::W => { pos_mov_obs[1] -= 1; },
+                graph::Action::E => { pos_mov_obs[1] += 1; },
+            }
+            // println!("agent_pos new, moving obs pos new: {:?}, {:?}", pos_agent, pos_mov_obs );
+            
+            sim_state[0] = pos_agent[0];
+            sim_state[1] = pos_agent[1];
+            sim_state[2] = pos_mov_obs[0];
+            sim_state[3] = pos_mov_obs[1];
+
+            run_state.push( ( sim_state.clone(), Some(next_action), Some(moving_obs_action), reached_task_set ) );
+        }
+
+        // println!("run: {:?}", run_state );
+
+        use std::fmt;
+        use std::fs::File;
+        use std::io::prelude::*;
+        use std::io::Write;
+        let mut buf = String::new();
+        let mut file = File::create("sample_task_set_1.txt").expect("lof file creation");
+        for (idx,(i,j,k,l)) in run_state.iter().enumerate() {
+            fmt::write(& mut buf,format_args!("{}, {}, {}, {}, {}, {:?}, {:?}, {}\n", idx, i[0], i[1], i[2], i[3], j, k, l )).expect("log string write");
+        }
+        file.write_all(buf.as_bytes());
+        
     }
-    println!("feasible");
-    //todo generate feasible policy sets for states and optimality policies
+    
+    return
 }
 
 pub fn set_intersect( a: &HashSet< Vec<i32> >, b: &HashSet< Vec<i32> > ) -> HashSet< Vec<i32> > {
@@ -681,15 +852,15 @@ fn compute_winning_set( tsys: &ts::TransitionSys, task_sets: &Vec<HashSet<Vec<i3
     let count_tasks = task_sets.len();
     let mut feasible_sets = task_sets.clone();
     let mut w = HashSet::new();
-    while true {
+    loop {
         for (idx,task_set) in task_sets.iter().take(count_tasks-1).enumerate() {
-            let predecessor_set = ControllablePredecessor( &tsys, task_set ).keys().cloned().collect();
+            let predecessor_set = ControllablePredecessor( &tsys, task_set ).0.keys().cloned().collect();
             feasible_sets[idx+1] = set_intersect( &feasible_sets[idx+1], &predecessor_set );
             if feasible_sets[idx+1].len() == 0 {
                 return ( HashSet::new(), vec![] )
             }
         }
-        let predecessor_set = ControllablePredecessor( &tsys, &feasible_sets[count_tasks-1] ).keys().cloned().collect();
+        let predecessor_set = ControllablePredecessor( &tsys, &feasible_sets[count_tasks-1] ).0.keys().cloned().collect();
         
         if set_subtract( &feasible_sets[0], &predecessor_set ).len() == 0 {
             //test for f_0 subset f_{n-1}
