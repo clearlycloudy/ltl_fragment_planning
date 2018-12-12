@@ -501,7 +501,7 @@ fn main() {
     // safety propositions ---------------------
     // do not collide with O and X
     let mut stationary_obstacles = HashSet::new();
-    // stationary_obstacles.insert( vec![1,1] );
+    stationary_obstacles.insert( vec![9,5] );
     
     // propositions for next step response:
     // for agent: (0,0) -> (0,1)
@@ -524,7 +524,7 @@ fn main() {
     // let mv_obs_range = ((d/2,d/2-2),(d/2+2,d/2+2));
 
     //scenario 2
-    let mv_obs_range = ((7,2),(7,9));
+    let mv_obs_range = ((7,6),(7,9));
     
     let delete_self_transition_1 = true;
     let (s_map_1, g_map_1) = graph::Graph::build_2d_map( d, &HashSet::new(), vec![((0,0),(d-1,d-1))], delete_self_transition_1 );
@@ -550,7 +550,8 @@ fn main() {
         
     //add propositions for next step response-----
     let mut next_step_response : HashMap<(i32,i32), HashSet<(i32,i32)> > = HashMap::new();
-    // next_step_response.insert( (1,0), [(1,1)].iter().cloned().collect() );
+    next_step_response.insert( (3,0), [(3,1)].iter().cloned().collect() );
+    next_step_response.insert( (3,1), [(3,2)].iter().cloned().collect() );
     
     let next_step_response_allowed = generate_next_step_response_constraints( &tsys_orig, &next_step_response );
 
@@ -635,7 +636,7 @@ fn main() {
     println!("ss_resp---------------------------");
 
     let mut ss_next_step_response : HashMap<(i32,i32), HashSet<(i32,i32)> > = HashMap::new();
-    // ss_next_step_response.insert( (1,2), [(1,1)].iter().cloned().collect() );
+    // ss_next_step_response.insert( (8,5), [(7,5)].iter().cloned().collect() );
 
     let ss_next_step_response_allowed = generate_next_step_response_constraints( &tsys_per, &ss_next_step_response );
 
@@ -716,6 +717,7 @@ fn main() {
         }
         let mut visit_count = 0;
         let visit_count_lim = policy_to_tasks.len() * 3;
+        // let visit_count_lim = policy_to_tasks.len();
         let mut task_cur = 0;
 
         let mut run_state = vec![ (sim_state.clone(), None, None, false) ];
@@ -830,7 +832,7 @@ fn main() {
         use std::io::prelude::*;
         use std::io::Write;
         let mut buf = String::new();
-        let mut file = File::create("sample_task_set_2.txt").expect("log file creation");
+        let mut file = File::create("sample_task_set_3.txt").expect("log file creation");
         for (idx,(i,j,k,l)) in run_state.iter().enumerate() {
             fmt::write(& mut buf,format_args!("{}, {}, {}, {}, {}, {:?}, {:?}, {}\n", idx, i[0], i[1], i[2], i[3], j, k, l )).expect("log string write");
         }
