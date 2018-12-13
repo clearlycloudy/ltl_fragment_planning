@@ -441,13 +441,21 @@ fn main() {
     
     // stationary obstacles ---------------------
     let mut stationary_obstacles = HashSet::new();
-    // stationary_obstacles.insert( vec![9,5] );
+    stationary_obstacles.insert( vec![1,0] );
+    stationary_obstacles.insert( vec![1,1] );
+    stationary_obstacles.insert( vec![1,2] );
+    stationary_obstacles.insert( vec![1,3] );
+    stationary_obstacles.insert( vec![1,4] );
+    stationary_obstacles.insert( vec![1,6] );
+    stationary_obstacles.insert( vec![1,7] );
+    stationary_obstacles.insert( vec![1,8] );
+    stationary_obstacles.insert( vec![1,9] );
 
     // moving obstacle range
-    let mv_obs_range = ((5,3),(7,7));
+    let mv_obs_range = ((6,0),(7,7));
     
     let delete_self_transition_1 = true;
-    let (s_map_1, g_map_1) = graph::Graph::build_2d_map( d, &HashSet::new(), vec![((0,0),(d-1,d-1))], delete_self_transition_1 );
+    let (s_map_1, g_map_1) = graph::Graph::build_2d_map( d, &stationary_obstacles, vec![((0,0),(d-1,d-1))], delete_self_transition_1 );
     let delete_self_transition_2 = false;
     let (s_map_2, g_map_2) = graph::Graph::build_2d_map( d, &stationary_obstacles, vec![mv_obs_range.clone()], delete_self_transition_2 );
     
@@ -464,7 +472,6 @@ fn main() {
     //add propositions for next step response-----
     let mut next_step_response : HashMap<(i32,i32), HashSet<(i32,i32)> > = HashMap::new();
     // next_step_response.insert( (3,0), [(3,1)].iter().cloned().collect() );
-    // next_step_response.insert( (3,1), [(3,2)].iter().cloned().collect() );
     
     let next_step_response_allowed = generate_next_step_response_constraints( &tsys_orig, &next_step_response );
 
@@ -496,7 +503,7 @@ fn main() {
     //add propositions for persistence----------------
     let tsys_per = {
 
-        let agent_working_area = ((d/4-1,0),(d,d));
+        let agent_working_area = ((1,0),(d,d));
         let states_satisfy_persistence = generate_persistence_constraints(&tsys_safe, agent_working_area);
 
         let states : HashSet<Vec<i32>> = generate_permutation( &tsys_safe.s, 0, 4 ).iter().cloned().collect();
@@ -518,7 +525,7 @@ fn main() {
     println!("ss_resp---------------------------");
 
     let mut ss_next_step_response : HashMap<(i32,i32), HashSet<(i32,i32)> > = HashMap::new();
-    // ss_next_step_response.insert( (8,5), [(7,5)].iter().cloned().collect() );
+    // ss_next_step_response.insert( (4,2), [(5,2)].iter().cloned().collect() );
 
     let ss_next_step_response_allowed = generate_next_step_response_constraints( &tsys_per, &ss_next_step_response );
 
@@ -531,9 +538,12 @@ fn main() {
         
     // let mut task_pos = HashSet::new();
     let mut task_pos = vec![];
-    task_pos.push( vec![d-1,0] );
+    task_pos.push( vec![9,1] );
     task_pos.push( vec![d-1,d-1] );
-    task_pos.push( vec![d/2,d-1] );
+    task_pos.push( vec![4,8] );
+    task_pos.push( vec![2,0] );
+    task_pos.push( vec![2,9] );
+    task_pos.push( vec![4,2] );
     let mut task_sets = generate_task_states(&tsys_ss_resp, &task_pos );
 
     for i in task_sets.iter_mut() {
@@ -641,7 +651,7 @@ fn main() {
                             visit_count += 1;
                             policy_to_tasks[task_cur].get(&sim_state).expect("unexpected state in policy query")
                         } else {
-                            panic!("unexpected state in policy query");
+                            panic!("unexpected state in policy query: {:?}", sim_state);
                         }
                     }
                 }
@@ -694,23 +704,30 @@ fn main() {
                 graph::Action::Stationary => {},
             }
             // println!("agent_pos new, moving obs pos new: {:?}, {:?}", pos_agent, pos_mov_obs );
-            
+
             sim_state[0] = pos_agent[0];
             sim_state[1] = pos_agent[1];
             sim_state[2] = pos_mov_obs[0];
             sim_state[3] = pos_mov_obs[1];
 
+            //verify that moving obstruction does not come close to the agent
+            if (sim_state[0]-sim_state[2]).abs() + (sim_state[1]-sim_state[3]).abs() <= 1 {
+                println!("agent came too close to the moving obstruction");
+                break;
+            }
+            
             run_state.push( ( sim_state.clone(), Some(next_action), Some(moving_obs_action), reached_task_set ) );
         }
 
         // println!("run: {:?}", run_state );
 
+        //log run to file
         use std::fmt;
         use std::fs::File;
         use std::io::prelude::*;
         use std::io::Write;
         let mut buf = String::new();
-        let mut file = File::create("sample_task_set_4.txt").expect("log file creation");
+        let mut file = File::create("sample_task_set_6.txt").expect("log file creation");
         for (idx,(i,j,k,l)) in run_state.iter().enumerate() {
             fmt::write(& mut buf,format_args!("{}, {}, {}, {}, {}, {:?}, {:?}, {}\n", idx, i[0], i[1], i[2], i[3], j, k, l )).expect("log string write");
         }
