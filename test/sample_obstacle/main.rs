@@ -585,6 +585,7 @@ fn main() {
         //optimal task set traversal policy can be inserted here (eg: minimizing bottleneck cost of traversal between tasks), but currently not implemented
 
         //run simulation
+        println!("start simulation");
         let mut sim_state = vec![ 0, 0, (mv_obs_range.1).0, (mv_obs_range.1).1 ];
 
         let mut task_visit_count = HashMap::new();
