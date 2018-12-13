@@ -6,6 +6,10 @@ The implementation is based on the paper, Optimal Control of Non-deterministic S
 
 Current implementation produces feasible policy but does not optimize for ordering of state traversal related to task constraints. The synthesized policies are subsequently simulated and recorded for analysis.
 
-See test/sample_obstacle/main.rs for demonstration.
+See test/sample_obstacle/main.rs for synthesis and simulation.
+
+See project.pdf for problem formulation and information on the related LTL fragment type used for synthesis.
+
+
 
 
