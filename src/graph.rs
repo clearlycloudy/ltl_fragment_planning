@@ -15,6 +15,7 @@ pub enum Action {
     S,
     W,
     E,
+    Stationary,
 }
 
 impl Graph {

@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 rand = "0.6.1"
+chrono = "0.4.0"
 
 [lib]
 name="ltl_fragment_planning"
