@@ -10,6 +10,10 @@ See test/sample_obstacle/main.rs for synthesis and simulation. To run, install R
 
 See project.pdf for problem formulation and information on the related LTL fragment type used for synthesis.
 
+Todo:
+- code refactor as a reusable general purpose module for arbitrary dimension state space.
+- optimization to internal algorithms
+
 
 
 
