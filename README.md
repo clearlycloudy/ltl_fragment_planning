@@ -14,7 +14,7 @@ Todo:
 - declarative specification of the problem(eg: similiar to PDDL)
 - code refactor as a reusable general purpose module for arbitrary dimension state space
 - optimization to internal algorithms
-- future investigation in MDP and monte carlo methods for controller robustness evaluation
+- future investigation in MDP and monte carlo methods for fine grained controller robustness evaluation
 
 
 
